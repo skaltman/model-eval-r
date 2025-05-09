@@ -49,7 +49,7 @@ are_eval <-
 
 We looked at a handful of models and evaluated how well they each generate R code. To do so, we used the [vitals package](https://vitals.tidyverse.org/), a framework for LLM evaluation. vitals contains functions for measuring the effectiveness of an LLM, as well as a dataset of challenging R coding problems and their solutions. We evaluated model performance on this set of coding problems. 
 
-## Current recommendation: OpenAI o3, OpenAI o4-mini, or Claude Sonnet 3.7
+## Current recommendation: OpenAI o4-mini, Claude Sonnet 3.7, or OpenAI o3
 
 ```{r}
 are_eval |> 
@@ -79,7 +79,9 @@ are_eval |>
   ) 
 ```
 
-For R coding tasks, we recommend using OpenAI o3 or o4-mini or Anthropic's Claude Sonnet 3.7. Many R programmers seem to prefer Claude Sonnet and it remains a good solution for R code generation, even though o3 and o4-mini slightly beat it out in this evaluation. 
+**For R coding tasks, we recommend using OpenAI's o4-mini or Anthropic's Claude Sonnet 3.7.** OpenAI's o3 performed the best on this evaluation, but is also ten times more expensive than o4-mini and around three times more expensive than Sonnet 3.7 (see pricing table below).
+
+Many R programmers seem to prefer Claude Sonnet and it remains a good solution for R code generation, even though o3 and o4-mini slightly beat it out in this evaluation. 
 
 ::: {.callout-note}
 ## Reasoning vs. non-reasoning models
