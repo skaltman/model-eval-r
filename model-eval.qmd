@@ -9,25 +9,28 @@ knitr:
     message: false
 ---
 
-```{r}
+```{r libraries}
 library(tidyverse)
 library(vitals)
 library(gt)
 ```
 
-```{r}
+```{r setup}
+# Assumes more output than input
+# Based on ratios from eval
+COST_BLEND_IO_RATIO <- 1/3
+RECOMMENDED <- c("o4-mini", "o3", "Claude 3.7 Sonnet (No Thinking)", "Claude 3.7 Sonnet (Thinking)")
+
 are_files <- list.files(here::here("results_rda"), full.names = TRUE)
 
 for (file in are_files) {
   load(file)
 }
-```
 
-```{r}
 are_eval <- 
   vitals_bind(
-    `Claude Sonnet 3.7\n(No Thinking)` = sonnet_3_7,
-    `Claude Sonnet 3.7\n(Thinking)` = sonnet_3_7_thinking,
+    `Claude 3.7 Sonnet\n(No Thinking)` = sonnet_3_7,
+    `Claude 3.7 Sonnet\n(Thinking)` = sonnet_3_7_thinking,
     `GPT-4.1` = gpt_4_1,
     `o1` = gpt_o1,
     `o3-mini` = gpt_o3_mini,
@@ -42,6 +45,51 @@ are_eval <-
       "Correct" = "C", "Partially Correct" = "P", "Incorrect" = "I"
   )
 )
+
+model_order <-
+  are_eval$model  |> 
+  fct_collapse(
+    "Claude 3.7 Sonnet" = 
+      c("Claude 3.7 Sonnet\n(No Thinking)", "Claude 3.7 Sonnet\n(Thinking)")
+  ) |> 
+  levels()
+
+model_prices <-
+  tribble(
+    ~Name, ~Input, ~Output,
+    "Claude 3.7 Sonnet", 3.00, 15.00,
+    "o3", 10.00, 40.00,
+    "o4-mini", 1.10, 4.40,
+    "GPT-4.1", 2.00, 8.00,
+    "o1", 15.00, 60.00,
+    "o3-mini", 1.10, 4.40
+  ) |>
+    arrange(desc(match(Name, model_order))) 
+
+are_costs <-
+  bind_rows(
+    gpt_4_1$get_cost(),
+    gpt_o1$get_cost(),
+    gpt_o3_mini$get_cost(),
+    gpt_o3$get_cost(),
+    gpt_o4_mini$get_cost()
+  ) |> 
+  filter(provider != "Anthropic") |>  # remove solver 
+  bind_rows(
+    sonnet_3_7$get_cost(),
+    sonnet_3_7_thinking$get_cost()
+  ) |> 
+  summarize(
+    min_input = min(input),
+    max_input = max(input),
+    min_output = min(output),
+    max_output = max(output),
+    avg_io_ratio = median(input / output),
+    total_cost = sum(str_extract(price, "\\d+") |> as.numeric())
+  ) |> 
+  mutate(
+    across(min_input:max_output, \(x) signif(x, 4) |> format(big.mark = ","))
+  )
 ```
 
 
@@ -49,9 +97,9 @@ are_eval <-
 
 We looked at a handful of models and evaluated how well they each generate R code. To do so, we used the [vitals package](https://vitals.tidyverse.org/), a framework for LLM evaluation. vitals contains functions for measuring the effectiveness of an LLM, as well as a dataset of challenging R coding problems and their solutions. We evaluated model performance on this set of coding problems. 
 
-## Current recommendation: OpenAI o4-mini, Claude Sonnet 3.7, or OpenAI o3
+## Current recommendation: OpenAI o4-mini, Claude 3.7 Sonnet, or OpenAI o3
 
-```{r}
+```{r main-plot}
 are_eval |> 
   ggplot(aes(y = model, fill = score)) +
   geom_bar(position = "fill") +
@@ -79,7 +127,69 @@ are_eval |>
   ) 
 ```
 
-**For R coding tasks, we recommend using OpenAI's o4-mini or Anthropic's Claude Sonnet 3.7.** OpenAI's o3 performed the best on this evaluation, but is also ten times more expensive than o4-mini and around three times more expensive than Sonnet 3.7 (see pricing table below).
+**For R coding tasks, we recommend using OpenAI's o4-mini or Anthropic's Claude 3.7 Sonnet.** OpenAI's o3 performed the best on this evaluation, but is also ten times more expensive than o4-mini and around three times more expensive than Sonnet 3.7 (see pricing table below).
+
+```{r price-plot}
+are_eval_summary <-
+  are_eval |> 
+  group_by(model) |> 
+  summarize(percent_correct = sum(score == "Correct") / n()) |> 
+  mutate(
+    model_join = str_remove_all(model, "\n.*")
+  ) |> 
+  left_join(model_prices, join_by(model_join == Name)) |> 
+  mutate(
+    blended_price = 
+      Input * COST_BLEND_IO_RATIO + Output * (1 - COST_BLEND_IO_RATIO),
+    model = str_replace(model, "\n", " ")
+  )
+
+mean_correct <- mean(are_eval_summary$percent_correct)
+mean_price <- mean(are_eval_summary$blended_price)
+  
+are_eval_summary |> 
+  ggplot(aes(blended_price, percent_correct)) +
+  geom_point() +
+  annotate(
+    "text", 
+    x = 1, 
+    y = 0.59, 
+    label = "High performing,\ninexpensive",
+    hjust = 0,
+    vjust = 0,
+    color = "#666666"
+  ) +
+  annotate(
+    "text", 
+    x = 50, 
+    y = 0.3, 
+    label = "Low performing,\nexpensive",
+    hjust = 1,
+    vjust = 0,
+    color = "#666666"
+  ) +
+  geom_hline(
+    yintercept = mean_correct, 
+    color = "white", 
+    size = 1
+  ) +
+  geom_vline(
+    xintercept = mean_price, 
+    color = "white", 
+    size = 1.5
+  ) +
+  geom_label(aes(label = model), nudge_x = 0.5, hjust = 0) +
+  scale_x_continuous(labels = scales::label_dollar()) +
+  scale_y_continuous(labels = scales::label_percent()) +
+  labs(
+    x = "Blended price",
+    y = "Percent correct",
+    title = "Model performance on R code generation vs. price",
+    subtitle = 
+      "Blended price reflects the average ratio of input to output\ntokens observed during the model evaluation (around 1:2)."
+  ) +
+  theme(plot.subtitle = element_text(face = "italic")) 
+```
 
 Many R programmers seem to prefer Claude Sonnet and it remains a good solution for R code generation, even though o3 and o4-mini slightly beat it out in this evaluation. 
 
@@ -87,72 +197,25 @@ Many R programmers seem to prefer Claude Sonnet and it remains a good solution f
 ## Reasoning vs. non-reasoning models
 _Thinking_ or _reasoning_ models are LLMs that attempt to solve tasks through structured, step-by-step processing rather than just pattern-matching.  
 
-Most of the models we looked at here are reasoning models, or are capable of reasoning. The only models not designed for reasoning are GPT-4.1 and Claude Sonnet 3.7 with thinking disabled.
+Most of the models we looked at here are reasoning models, or are capable of reasoning. The only models not designed for reasoning are GPT-4.1 and Claude 3.7 Sonnet with thinking disabled.
 :::
 
 
 ## Key insights
 
-* OpenAI's o3 and o4-mini and Anthropic's Claude Sonnet 3.7 are the current best performers on the set of R coding tasks. o3 and o4-mini, released in April 2025, are OpenAI's newest models.
-* Claude Sonnet 3.7 performed similarly regardless of whether thinking was enabled. 
+* OpenAI's o3 and o4-mini and Anthropic's Claude 3.7 Sonnet are the current best performers on the set of R coding tasks. o3 and o4-mini, released in April 2025, are OpenAI's newest models.
+* Claude 3.7 Sonnet performed similarly regardless of whether thinking was enabled. 
 * o3 and o4-mini performed much better than the previous generation of reasoning models, o1 and o3-mini, which were released in December 2024 and January 2025, respectively.
 
 ## Pricing
 
 LLM pricing is typically provided per million tokens. Note that in our analysis, o3 and o4-mini performed similarly for R code generation, but o3 is about ten times more expensive. OpenAI uses the "mini" suffix for models that are smaller, faster, and cheaper than the other models. 
 
-```{r pricing}
-model_order <-
-  are_eval$model  |> 
-  fct_collapse(
-    "Claude 3.7 Sonnet" = 
-      c("Claude Sonnet 3.7\n(No Thinking)", "Claude Sonnet 3.7\n(Thinking)")
-  ) |> 
-  levels()
-
-tribble(
-  ~Name, ~Input, ~Output,
-  "Claude 3.7 Sonnet", "$3.00", "$15.00",
-  "o3", "$10.00", "$40.00",
-  "o4-mini", "$1.10", "$4.40",
-  "GPT-4.1", "$2.00", "$8.00",
-  "o1", "$15.00", "$60.00",
-  "o3-mini", "$1.10", "$4.40"
-) |>
-  arrange(desc(match(Name, model_order))) |> 
+```{r pricing-table}
+model_prices |> 
   gt() |>
-  cols_label(
-    Name = "Model",
-    Input = "Input",
-    Output = "Output"
-  ) |>
+  fmt_currency(columns = c(Input, Output), currency = "USD") |> 
   tab_header(title = "Price per 1 million tokens")
-```
-
-```{r}
-are_costs <-
-  bind_rows(
-    gpt_4_1$get_cost(),
-    gpt_o1$get_cost(),
-    gpt_o3_mini$get_cost(),
-    gpt_o3$get_cost(),
-    gpt_o4_mini$get_cost()
-  ) |> 
-  filter(provider != "Anthropic") |>  # remove solver 
-  bind_rows(
-    sonnet_3_7$get_cost(),
-    sonnet_3_7_thinking$get_cost()
-  ) |> 
-  summarize(
-    min_input = min(input),
-    max_input = max(input),
-    min_output = min(output),
-    max_output = max(output),
-    total_cost = sum(str_extract(price, "\\d+") |> as.numeric())
-  ) |> 
-  mutate(
-    across(min_input:max_output, \(x) signif(x, 4) |> format(big.mark = ","))
-  )
 ```
 
 
@@ -165,6 +228,6 @@ In our evaluation process, each model used between `r are_costs$min_input` and `
 
 * We used [ellmer](https://ellmer.tidyverse.org/) to create connections to the various models and [vitals](https://vitals.tidyverse.org/) to evaluate model performance on R code generation tasks.
 * We tested each model on a shared benchmark: the `are` dataset ("**A**n **R** **E**val"). `are` contains a collection of difficult R coding problems and a column, `target`, with information about the target solution.  
-* Using vitals, we had each model solve each problem in `are`. Then, we scored their solutions using a scoring model (Claude Sonnet 3.7). Each solution received either an Incorrect, Partially Correct, or Correct score. 
+* Using vitals, we had each model solve each problem in `are`. Then, we scored their solutions using a scoring model (Claude 3.7 Sonnet). Each solution received either an Incorrect, Partially Correct, or Correct score. 
 
-You can see all the code used to evaluate the models [here](https://github.com/skaltman/model-eval-r/blob/99b405a40b6b5f12ed03eba6d1f6d3d20620cd84/eval.R). If you'd like to see a more in-depth analysis, check out Simon Couch's series of blog posts, which this post is based on, including [Evaluating o3 and o4-mini on R coding performance](https://www.simonpcouch.com/blog/2025-04-18-o3-o4-mini/). 
+You can see all the code used to evaluate the models [here](https://github.com/skaltman/model-eval-r/blob/99b405a40b6b5f12ed03eba6d1f6d3d20620cd84/eval.R). If you'd like to see a more in-depth analysis, check out Simon Couch's series of [blog posts](https://www.simonpcouch.com/blog/), which this post is based on, including [Evaluating o3 and o4-mini on R coding performance](https://www.simonpcouch.com/blog/2025-04-18-o3-o4-mini/). 
