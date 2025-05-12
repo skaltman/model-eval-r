@@ -18,7 +18,7 @@ library(gt)
 ```{r setup}
 # Assumes more output than input
 # Based on ratios from eval
-COST_BLEND_IO_RATIO <- 1/3
+COST_BLEND_INPUT_MULTIPLIER <- 1/3
 RECOMMENDED <- c("o4-mini", "o3", "Claude 3.7 Sonnet (No Thinking)", "Claude 3.7 Sonnet (Thinking)")
 
 are_files <- list.files(here::here("results_rda"), full.names = TRUE)
@@ -112,22 +112,24 @@ are_eval |>
         "Incorrect" = "#ef8a62"
       )
   ) +
-  scale_x_continuous(labels = scales::percent) +
+  scale_x_continuous(labels = scales::percent, expand = c(5e-3, 5e-3)) +
   labs(
     x = "Percent", 
     y = NULL,
     title = "Model performance on R code generation",
     fill = "Score",
     subtitle = 
-      "OpenAI's newest reasoning models, o3 and o4-mini, are a substantial improvement on their\nprevious generation of models. Claude 3.7 Sonnet trails these new models slightly."
+      "OpenAI's newest models, o3 and o4-mini, are a substantial improvement on their\nprevious generation of models. Claude 3.7 Sonnet trails these new models slightly."
   ) +
+  theme_light() +
   theme(
     plot.subtitle = element_text(face = "italic"),
-    legend.position = "bottom"
+    legend.position = "bottom",
+    plot.margin = margin(r = 10)
   ) 
 ```
 
-**For R coding tasks, we recommend using OpenAI's o4-mini or Anthropic's Claude 3.7 Sonnet.** OpenAI's o3 performed the best on this evaluation, but is also ten times more expensive than o4-mini and around three times more expensive than Sonnet 3.7 (see pricing table below).
+**For R coding tasks, we recommend using OpenAI's o4-mini or Anthropic's Claude 3.7 Sonnet.** OpenAI's o3 performed the best on this evaluation, but is also ten times more expensive than o4-mini and around three times more expensive than Sonnet 3.7.
 
 ```{r price-plot}
 are_eval_summary <-
@@ -140,7 +142,7 @@ are_eval_summary <-
   left_join(model_prices, join_by(model_join == Name)) |> 
   mutate(
     blended_price = 
-      Input * COST_BLEND_IO_RATIO + Output * (1 - COST_BLEND_IO_RATIO),
+      Input * COST_BLEND_INPUT_MULTIPLIER + Output * (1 - COST_BLEND_INPUT_MULTIPLIER),
     model = str_replace(model, "\n", " ")
   )
 
@@ -163,22 +165,31 @@ are_eval_summary |>
     "text", 
     x = 50, 
     y = 0.3, 
-    label = "Low performing,\nexpensive",
+    label = "Lower performing,\nexpensive",
     hjust = 1,
     vjust = 0,
     color = "#666666"
   ) +
   geom_hline(
     yintercept = mean_correct, 
-    color = "white", 
-    size = 1
+    color = "#666666", 
+    size = 1,
+    alpha = 0.4
+    #linetype = "dashed"
   ) +
   geom_vline(
     xintercept = mean_price, 
-    color = "white", 
-    size = 1.5
+    color = "#666666", 
+    size = 1,
+    alpha = 0.4
   ) +
-  geom_label(aes(label = model), nudge_x = 0.5, hjust = 0) +
+  geom_label(
+    aes(label = model), 
+    nudge_x = 0.5, 
+    hjust = 0,
+    fill = "#f5f5f5", 
+    color = "#333333"
+  ) +
   scale_x_continuous(labels = scales::label_dollar()) +
   scale_y_continuous(labels = scales::label_percent()) +
   labs(
@@ -186,9 +197,12 @@ are_eval_summary |>
     y = "Percent correct",
     title = "Model performance on R code generation vs. price",
     subtitle = 
-      "Blended price reflects the average ratio of input to output\ntokens observed during the model evaluation (around 1:2)."
+      "Blended price reflects the average ratio of input to output tokens observed\nduring the model evaluation (1:2)."
   ) +
-  theme(plot.subtitle = element_text(face = "italic")) 
+  theme_light() + 
+  theme(
+    plot.subtitle = element_text(face = "italic")
+  )  
 ```
 
 Many R programmers seem to prefer Claude Sonnet and it remains a good solution for R code generation, even though o3 and o4-mini slightly beat it out in this evaluation. 
