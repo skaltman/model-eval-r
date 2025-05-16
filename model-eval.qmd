@@ -20,7 +20,6 @@ library(gt)
 # Assumes more output than input
 # Based on ratios from eval
 COST_BLEND_INPUT_MULTIPLIER <- 1/3
-RECOMMENDED <- c("o4-mini", "o3", "Claude 3.7 Sonnet (No Thinking)", "Claude 3.7 Sonnet (Thinking)")
 
 are_files <- list.files(here::here("results_rda"), full.names = TRUE)
 
@@ -98,7 +97,7 @@ are_costs <-
 
 We looked at a handful of models and evaluated how well they each generate R code. To do so, we used the [vitals package](https://vitals.tidyverse.org/), a framework for LLM evaluation. vitals contains functions for measuring the effectiveness of an LLM, as well as a dataset of challenging R coding problems and their solutions. We evaluated model performance on this set of coding problems. 
 
-## Current recommendation: OpenAI o4-mini, Claude 3.7 Sonnet, or OpenAI o3
+## Current recommendation: OpenAI o4-mini or Claude 3.7 Sonnet
 
 ```{r main-plot}
 are_eval |> 
@@ -131,6 +130,13 @@ are_eval |>
 ```
 
 **For R coding tasks, we recommend using OpenAI's o4-mini or Anthropic's Claude 3.7 Sonnet.** OpenAI's o3 performed the best on this evaluation, but is also ten times more expensive than o4-mini and around three times more expensive than Sonnet 3.7.
+
+::: {.callout-note}
+## Reasoning vs. non-reasoning models
+_Thinking_ or _reasoning_ models are LLMs that attempt to solve tasks through structured, step-by-step processing rather than just pattern-matching.  
+
+Most of the models we looked at here are reasoning models, or are capable of reasoning. The only models not designed for reasoning are GPT-4.1 and Claude 3.7 Sonnet with thinking disabled.
+:::
 
 ```{r price-plot}
 are_eval_summary <-
@@ -194,11 +200,11 @@ are_eval_summary |>
   scale_x_continuous(labels = scales::label_dollar()) +
   scale_y_continuous(labels = scales::label_percent()) +
   labs(
-    x = "Blended price",
+    x = "Blended price per million tokens",
     y = "Percent correct",
     title = "Model performance on R code generation vs. price",
     subtitle = 
-      "Blended price reflects the average ratio of input to output tokens observed\nduring the model evaluation (1:2)."
+      "Blended price reflects the average ratio of input to output tokens observed\nduring the model evaluation (input:output ratio 1:2, per million tokens)."
   ) +
   theme_light() + 
   theme(
@@ -206,15 +212,16 @@ are_eval_summary |>
   )  
 ```
 
-Many R programmers seem to prefer Claude Sonnet and it remains a good solution for R code generation, even though o3 and o4-mini performed slightly better in this evaluation. 
+Many R programmers seem to prefer Claude Sonnet and it remains a good solution for R code generation, even though o3 and o4-mini performed slightly better in this evaluation.
 
-::: {.callout-note}
-## Reasoning vs. non-reasoning models
-_Thinking_ or _reasoning_ models are LLMs that attempt to solve tasks through structured, step-by-step processing rather than just pattern-matching.  
+::: {.callout-caution}
+## Take token usage into account
+Reasoning models, including o4-mini, often generate significantly more output tokens than non-reasoning models. So while o4-mini is inexpensive per token, its actual cost can be higher than expected.  
 
-Most of the models we looked at here are reasoning models, or are capable of reasoning. The only models not designed for reasoning are GPT-4.1 and Claude 3.7 Sonnet with thinking disabled.
+In our evaluation, however, o4-mini was still tied for the least expensive model overall, despite using more output tokens than any model except o3 (another reasoning model).
+
+If you have ideas for how we could better visualize or communicate model cost, we would like to hear your suggestions.
 :::
-
 
 ## Key insights
 
@@ -234,7 +241,7 @@ model_prices |>
 ```
 
 
-A **token** is the fundmental unit of data that an LLM can process. For text processing, you can think of a token as approximately a word, although it may be smaller. 
+A **token** is the fundamental unit of data that an LLM can process. For text processing, you can think of a token as approximately a word, although it may be smaller. 
 
 In our evaluation process, each model used between `r are_costs$min_input` and `r are_costs$max_input` input tokens and between `r are_costs$min_output` and `r are_costs$max_output` output tokens. The entire analysis cost around $`r are_costs$total_cost`.
 
