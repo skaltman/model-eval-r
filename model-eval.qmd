@@ -216,7 +216,7 @@ Many R programmers seem to prefer Claude Sonnet and it remains a good solution f
 
 ::: {.callout-caution}
 ## Take token usage into account
-Reasoning models, including o4-mini, often generate significantly more output tokens than non-reasoning models. So while o4-mini is inexpensive per token, its actual cost can be higher than expected.  
+A **token** is the fundamental unit of data that an LLM can process (for text processing, a token is approximately a word). Reasoning models, including o4-mini, often generate significantly more output tokens than non-reasoning models. So while o4-mini is inexpensive per token, its actual cost can be higher than expected.  
 
 In our evaluation, however, o4-mini was still tied for the least expensive model overall, despite using more output tokens than any model except o3 (another reasoning model).
 
@@ -239,9 +239,6 @@ model_prices |>
   fmt_currency(columns = c(Input, Output), currency = "USD") |> 
   tab_header(title = "Price per 1 million tokens")
 ```
-
-
-A **token** is the fundamental unit of data that an LLM can process. For text processing, you can think of a token as approximately a word, although it may be smaller. 
 
 In our evaluation process, each model used between `r are_costs$min_input` and `r are_costs$max_input` input tokens and between `r are_costs$min_output` and `r are_costs$max_output` output tokens. The entire analysis cost around $`r are_costs$total_cost`.
 
