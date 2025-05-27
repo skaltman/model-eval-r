@@ -11,6 +11,7 @@ OPENAI_MODELS <-
     "gpt_4_1" = "gpt-4.1-2025-04-14"
   )
 
+ANTHROPIC_MODEL <- "claude-sonnet-4-20250514"
 
 vitals::vitals_log_dir_set("./logs")
 
@@ -29,7 +30,7 @@ are_task <- Task$new(
   
 
 model_eval <- function(model, filename = model, chat_fun, overwrite = FALSE, ...) {
-  model_path <- fs::path("results", filename, ext = "rda")
+  model_path <- fs::path("results_rda", filename, ext = "rda")
   
   if (!overwrite & fs::file_exists(model_path)) {
     message(glue::glue("Skipping {model}: file already exists at {model_path}"))
@@ -46,10 +47,10 @@ model_eval <- function(model, filename = model, chat_fun, overwrite = FALSE, ...
 
 iwalk(OPENAI_MODELS, model_eval, chat_fun = chat_openai)
 
-model_eval("claude-3-7-sonnet-latest", filename = "sonnet_3_7", chat_fun = chat_anthropic)
+model_eval(ANTHROPIC_MODEL, filename = "sonnet_4", chat_fun = chat_anthropic)
 model_eval(
-  "claude-3-7-sonnet-latest", 
-  filename = "sonnet_3_7_thinking",
+  ANTHROPIC_MODEL, 
+  filename = "sonnet_4_thinking",
   chat_fun = chat_anthropic, 
   api_args = list(
     thinking = list(type = "enabled", budget_tokens = 2000)

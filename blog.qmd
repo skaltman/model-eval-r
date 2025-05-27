@@ -14,6 +14,7 @@ knitr:
 library(tidyverse)
 library(vitals)
 library(gt)
+library(ggrepel)
 ```
 
 ```{r setup}
@@ -29,8 +30,8 @@ for (file in are_files) {
 
 are_eval <- 
   vitals_bind(
-    `Claude 3.7 Sonnet\n(No Thinking)` = sonnet_3_7,
-    `Claude 3.7 Sonnet\n(Thinking)` = sonnet_3_7_thinking,
+    `Claude Sonnet 4\n(No Thinking)` = sonnet_4,
+    `Claude Sonnet 4\n(Thinking)` = sonnet_4_thinking,
     `GPT-4.1` = gpt_4_1,
     `o1` = gpt_o1,
     `o3-mini` = gpt_o3_mini,
@@ -49,15 +50,15 @@ are_eval <-
 model_order <-
   are_eval$model  |> 
   fct_collapse(
-    "Claude 3.7 Sonnet" = 
-      c("Claude 3.7 Sonnet\n(No Thinking)", "Claude 3.7 Sonnet\n(Thinking)")
+    "Claude Sonnet 4" = 
+      c("Claude Sonnet 4\n(No Thinking)", "Claude Sonnet 4\n(Thinking)")
   ) |> 
   levels()
 
 model_prices <-
   tribble(
     ~Name, ~Input, ~Output,
-    "Claude 3.7 Sonnet", 3.00, 15.00,
+    "Claude Sonnet 4", 3.00, 15.00,
     "o3", 10.00, 40.00,
     "o4-mini", 1.10, 4.40,
     "GPT-4.1", 2.00, 8.00,
@@ -97,7 +98,7 @@ are_costs <-
 
 We looked at a handful of models and evaluated how well they each generate R code. To do so, we used the [vitals package](https://vitals.tidyverse.org/), a framework for LLM evaluation. vitals contains functions for measuring the effectiveness of an LLM, as well as a dataset of challenging R coding problems and their solutions. We evaluated model performance on this set of coding problems. 
 
-## Current recommendation: OpenAI o4-mini or Claude 3.7 Sonnet
+## Current recommendation: OpenAI o4-mini or Claude Sonnet 4
 
 ```{r main-plot}
 are_eval |> 
@@ -119,7 +120,7 @@ are_eval |>
     title = "Model performance on R code generation",
     fill = "Score",
     subtitle = 
-      "OpenAI's newest models, o3 and o4-mini, are a substantial improvement on their\nprevious generation of models. Claude 3.7 Sonnet trails these new models slightly."
+      "OpenAI's newest models, o3 and o4-mini, are a substantial improvement over their\nprevious generation of models. Claude Sonnet 4 trails these new models slightly."
   ) +
   theme_light() +
   theme(
@@ -129,13 +130,13 @@ are_eval |>
   ) 
 ```
 
-**For R coding tasks, we recommend using OpenAI's o4-mini or Anthropic's Claude 3.7 Sonnet.** OpenAI's o3 performed the best on this evaluation, but is also ten times more expensive than o4-mini and around three times more expensive than Sonnet 3.7.
+**For R coding tasks, we recommend using OpenAI's o4-mini or Anthropic's Claude Sonnet 4.** OpenAI's o3 performed the best on this evaluation, but is also ten times more expensive than o4-mini and around three times more expensive than Sonnet 4.
 
 ::: {.callout-note}
 ## Reasoning vs. non-reasoning models
 _Thinking_ or _reasoning_ models are LLMs that attempt to solve tasks through structured, step-by-step processing rather than just pattern-matching.  
 
-Most of the models we looked at here are reasoning models, or are capable of reasoning. The only models not designed for reasoning are GPT-4.1 and Claude 3.7 Sonnet with thinking disabled.
+Most of the models we looked at here are reasoning models, or are capable of reasoning. The only models not designed for reasoning are GPT-4.1 and Claude Sonnet 4 with thinking disabled.
 :::
 
 ```{r price-plot}
@@ -182,7 +183,6 @@ are_eval_summary |>
     color = "#666666", 
     size = 1,
     alpha = 0.4
-    #linetype = "dashed"
   ) +
   geom_vline(
     xintercept = mean_price, 
@@ -190,12 +190,13 @@ are_eval_summary |>
     size = 1,
     alpha = 0.4
   ) +
-  geom_label(
+  geom_label_repel(
     aes(label = model), 
-    nudge_x = 0.5, 
-    hjust = 0,
-    fill = "#f5f5f5", 
-    color = "#333333"
+    force = 0.5, 
+    seed = 5,
+    nudge_x = 0.7,
+    color = "#333333",
+    fill = "#f5f5f5"
   ) +
   scale_x_continuous(labels = scales::label_dollar()) +
   scale_y_continuous(labels = scales::label_percent()) +
@@ -225,9 +226,13 @@ If you have ideas for how we could better visualize or communicate model cost, w
 
 ## Key insights
 
-* OpenAI's o3 and o4-mini and Anthropic's Claude 3.7 Sonnet are the current best performers on the set of R coding tasks. o3 and o4-mini, released in April 2025, are OpenAI's newest models.
-* Claude 3.7 Sonnet performed similarly regardless of whether thinking was enabled. 
-* o3 and o4-mini performed much better than the previous generation of reasoning models, o1 and o3-mini, which were released in December 2024 and January 2025, respectively.
+* **OpenAI's o3 and o4-mini and Anthropic's Claude Sonnet 4 are the current best performers on the set of R coding tasks.**
+
+    OpenAI’s o3 and o4-mini (April 2025) and Anthropic’s Claude Sonnet 4 (May 2025) are the newest models we evaluated. Anthropic also released Claude Opus 4, which we did not evaluate, alongside Sonnet 4.
+
+* **Claude Sonnet 4 performed similarly regardless of whether thinking was enabled.**
+
+* **o3 and o4-mini performed much better than the previous generation of reasoning models, o1 and o3-mini, which were released in December 2024 and January 2025, respectively.**
 
 ## Pricing
 
