@@ -4,4 +4,5 @@ This repository contains the code for the accompanying blog post. `eval.R` conta
 
 Note that if you want to run the code yourself, you will need to set up OpenAI and Anthropic API keys. You can learn more on the [ellmer package site](https://ellmer.tidyverse.org/#authentication).
 
-![image](https://github.com/user-attachments/assets/b8da41d4-b4d1-4382-a871-cdd94426fce3)
+![image](https://github.com/user-attachments/assets/f3271c83-b71f-4542-aadf-75b90c773ded)
+
