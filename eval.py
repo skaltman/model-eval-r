@@ -27,9 +27,12 @@ def ds_pandas_task():
     return Task(
         dataset=ds_pandas,
         solver=[generate()],
-        scorer=model_graded_qa(model="anthropic/claude-sonnet-4-20250514"),
+        scorer=model_graded_qa(model="anthropic/claude-sonnet-4-20250514", partial_credit=True),
     )
 
+
+# Sample inspect call for the ds_pandas_task task
 # inspect eval eval.py \
-  # --model openai/o3-mini-2025-04-16 \
-  # --log-format json
+#   --model anthropic/claude-sonnet-4-20250514 \
+#   --log-format json
+#   --reasoning-tokens 1024
