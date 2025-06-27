@@ -1,0 +1,293 @@
+---
+title: "Which AI model writes the best Pandas code?"
+author: "Sara Altman, Simon Couch"
+format: html
+execute: 
+    echo: false
+    warning: false
+knitr: 
+  opts_chunk:
+    message: false
+---
+
+```{r}
+library(fs)
+library(jsonlite)
+library(tidyverse)
+library(ggrepel)
+
+COST_BLEND_INPUT_MULTIPLIER <- 1/3
+
+get_scores <- function(file) {
+  x <- read_json(file)
+  samples <- x$samples
+
+  tokens <- x$stats$model_usage[[1]]
+  reasoning_tokens <- tokens$reasoning_tokens %||% NA_integer_
+
+  tibble(
+    id = map_int(samples, "id"),
+    model = map_chr(samples, \(x) x$output$model),
+    score = map_chr(samples, \(x) x$scores$model_graded_qa$value),
+    reasoning = reasoning_tokens > 0,
+    input = tokens$input_tokens,
+    output = tokens$output_tokens
+  ) 
+}
+
+df <-
+  map(
+    dir_ls("logs"),
+    get_scores
+  ) |> 
+  list_rbind() |>
+  mutate(
+    model = fct_recode(
+      model, 
+      `Claude Sonnet 4` = "claude-sonnet-4-20250514",
+      `o3-mini` = "o3-mini-2025-01-31",
+      `o4-mini` = "o4-mini-2025-04-16",
+      `GPT-4.1` = "gpt-4.1-2025-04-14",
+      `o3` = "o3-2025-04-16",
+      `o1` = "o1-2024-12-17"
+    ),
+    score = 
+      fct_recode(
+        score,
+        "Correct" = "C",
+        "Partially Correct" = "P",
+        "Incorrect" = "I"
+      ) |> 
+      fct_relevel("Partially Correct", after = 1) |>
+      fct_rev(),
+    model = 
+      case_when(
+        model == "Claude Sonnet 4" & reasoning ~ "Claude Sonnet 4\n(Thinking)",
+        model == "Claude Sonnet 4" ~ "Claude Sonnet 4\n(No Thinking)",
+        .default = model
+      ) |> 
+        fct_reorder(score, .fun = \(x) sum(x == "Correct", na.rm = TRUE))
+  ) 
+
+model_order <-
+  df$model  |> 
+  fct_collapse(
+   "Claude Sonnet 4" = 
+      c("Claude Sonnet 4\n(No Thinking)", "Claude Sonnet 4\n(Thinking)")
+  ) |> 
+  levels()
+
+model_prices <-
+  tribble(
+    ~Name, ~Input, ~Output,
+    "Claude Sonnet 4", 3.00, 15.00,
+    "o3", 10.00, 40.00,
+    "o4-mini", 1.10, 4.40,
+    "GPT-4.1", 2.00, 8.00,
+    "o1", 15.00, 60.00,
+    "o3-mini", 1.10, 4.40
+  ) |>
+    arrange(desc(match(Name, model_order))) 
+
+eval_costs_tokens <-
+  df |> 
+  mutate(
+    model_join = fct_collapse(
+      model,
+      "Claude Sonnet 4" = 
+        c("Claude Sonnet 4\n(No Thinking)", "Claude Sonnet 4\n(Thinking)")
+    )
+  ) |> 
+  left_join(model_prices, join_by(model_join == Name)) |> 
+  mutate(actual_cost = input * Input / 1e6 + output * Output / 1e6) |> 
+  group_by(model) |> 
+  slice(1) |> 
+  ungroup() |> 
+  select(-score, -reasoning, -model_join) |> 
+  rename(
+    input_cost = Input,
+    output_cost = Output
+  )
+  
+eval_tokens_summary <- 
+  eval_costs_tokens |> 
+  summarize(
+    min_input = min(input, na.rm = TRUE),
+    max_input = max(input, na.rm = TRUE),
+    min_output = max(output, na.rm = TRUE),
+    max_output = max(output, na.rm = TRUE),
+    min_cost = min(actual_cost, na.rm = TRUE),
+    max_cost = max(actual_cost, na.rm = TRUE),
+    avg_io_ratio = median(input / output),
+    total_cost = sum(actual_cost, na.rm = TRUE)
+  )
+```
+
+**LLMs can now help you write Python code. There are many available models, so which one should you pick?**
+
+We looked at a handful of models and evaluated how well they each generate Python code. To do so, we used [Inspect](https://inspect.aisi.org.uk/), a Python framework for LLM evaluation, and the [DS-1000 dataset](https://ukgovernmentbeis.github.io/inspect_evals/evals/coding/ds1000/), a code generation benchmark for Python data science libraries. For this evaluation, we limited DS-1000 to only the 291 coding problems that involved Pandas. 
+
+## Current recommendation for Pandas: OpenAI o4-mini, OpenAI o3-mini, or Claude Sonnet 4
+
+```{r}
+df |> 
+  ggplot(aes(y = model, fill = score)) +
+  geom_bar(position = "fill") +
+  scale_fill_manual(
+    values = 
+      c(
+        "Correct" = "#6caea7",
+        "Partially Correct" = "#f6e8c3", 
+        "Incorrect" = "#ef8a62"
+      )
+  ) +
+  scale_x_continuous(labels = scales::percent, expand = c(5e-3, 5e-3)) +
+  labs(
+    x = "Percent", 
+    y = NULL,
+    title = "Model performance on Pandas code generation",
+    fill = "Score",
+    subtitle = 
+      "Most of the frontier models perform similarly, with Claude Sonnet slightly\ntrailing the most recent and powerful OpenAI models."
+  ) +
+  theme_light() +
+  theme(
+    plot.subtitle = element_text(face = "italic"),
+    legend.position = "bottom",
+    plot.margin = margin(r = 10)
+  ) 
+```
+
+**For Pandas coding tasks, we recommend using OpenAI's o4-mini or o3-mini or Anthropic's Claude Sonnet 4.** The top models all performed very similarly, but their prices vary substantially. o4-mini, o3-mini, and Claude Sonnet 4 are substantially less expensive than o1 and o3 (see Pricing Table below). For Pandas code generation, we expect that the additional cost will not translate to proportionally better results. 
+
+::: {.callout-note}
+## Reasoning vs. non-reasoning models
+_Thinking_ or _reasoning_ models are LLMs that attempt to solve tasks through structured, step-by-step processing rather than just pattern-matching.  
+
+Most of the models we looked at here are reasoning models, or are capable of reasoning. The only models not designed for reasoning are GPT-4.1 and Claude Sonnet 4 with thinking disabled.
+:::
+
+```{r}
+eval_summary <-
+  df |> 
+  group_by(model) |> 
+  summarize(percent_correct = sum(score == "Correct") / n()) |> 
+  mutate(
+    model_join = str_remove_all(model, "\n.*")
+  ) |> 
+  left_join(eval_costs_tokens, by = join_by(model)) 
+
+mean_correct <- mean(eval_summary$percent_correct, na.rm = TRUE)
+mean_price <- mean(eval_summary$actual_cost, na.rm = TRUE)
+  
+eval_summary |> 
+  drop_na() |> 
+  mutate(model = str_replace(model, "\n", " ")) |> 
+  ggplot(aes(actual_cost, percent_correct)) +
+  geom_point() +
+  annotate(
+    "text", 
+    x = 1, 
+    y = 1, 
+    label = "High performing,\ninexpensive",
+    hjust = 0,
+    color = "#666666",
+    size = 3.5
+  ) +
+  annotate(
+    "text", 
+    x = 25, 
+    y = 0.3, 
+    label = "Lower performing,\nexpensive",
+    hjust = 1,
+    vjust = 0,
+    color = "#666666",
+    size = 3.5
+  ) +
+  geom_hline(
+    yintercept = mean_correct, 
+    color = "#666666", 
+    size = 1,
+    alpha = 0.4
+  ) +
+  geom_vline(
+    xintercept = mean_price, 
+    color = "#666666", 
+    size = 1,
+    alpha = 0.4
+  ) +
+  geom_label_repel(
+    aes(label = model), 
+    force = 0.5, 
+    seed = 5,
+    nudge_x = 0.7,
+    color = "#333333",
+    fill = "#f5f5f5"
+  ) +
+  coord_cartesian(ylim = c(0.3, 1.05)) +
+  scale_x_continuous(labels = scales::label_dollar()) +
+  scale_y_continuous(
+    labels = scales::label_percent(), 
+    breaks = scales::breaks_width(width = 0.2)
+  ) +
+  labs(
+    x = "Total price",
+    y = "Percent correct",
+    title = "Model performance on Pandas code generation vs. cost",
+    subtitle = 
+      "Cost represents the actual total cost of the evaluation,\nwhich consisted of 291 Pandas coding problems."
+  ) +
+  theme_light() + 
+  theme(
+    plot.subtitle = element_text(face = "italic")
+  )  
+```
+
+::: {.callout-caution}
+## Take token usage into account
+A **token** is the fundamental unit of data that an LLM can process (for text processing, a token is approximately a word). Reasoning models, like o3-mini and o4-mini, often generate significantly more output tokens than non-reasoning models. So while some models are inexpensive per token, their actual cost can be higher than expected.  
+
+In our evaluation, however, this did not prove to be an issue. o4-mini used the most output tokens of any model, but was still one of the least expensive options. 
+:::
+
+## Key insights
+
+* **Most of the current frontier models perform similarly on the Pandas problems from DS-1000.** 
+* **OpenAI's o4-mini and o3-mini perform just as well as the more expensive o3 and o1 models.**
+* **Claude Sonnet 4 performed similarly regardless of whether thinking was enabled.** This is similar to what we found for [R code generation](https://posit.co/blog/r-llm-evaluation/). 
+
+### Limitations
+
+**DS-1000 is a commonly used dataset,** so it’s likely that the models were exposed to some or all of these problems during training. This means our results may be inflated compared to performance on more realistic or complex Pandas tasks. 
+
+Because of this, **the exact accuracy numbers aren’t especially meaningful.** Model-to-model comparisons are more informative than absolute performance. Even those comparisons should be interpreted with caution since DS-1000 is such a common benchmark. Ideally, we’d evaluate models on an unseen test set, but building one (especially one as large as DS-1000) is very time-consuming.
+
+We [previously evaluated](https://posit.co/blog/r-llm-evaluation/) a similar set of models on R coding tasks. That evaluation used a much smaller and more challenging dataset (`are`, from the vitals package), whereas the 291 DS-1000 Pandas problems are easier and likely appeared in the training data for many models. **Because the evaluation datasets differ so much in difficulty and familiarity, you shouldn’t compare performance across the Python and [R evaluations](https://posit.co/blog/r-llm-evaluation/). Instead, compare models only within each evaluation.**
+
+## Pricing
+
+LLM pricing is typically provided per million tokens. Note that in our analysis, o1, o3, o3-mini, and o4-mini performed similarly for Python code generation, but o1 and o3 are much more expensive. OpenAI uses the "mini" suffix for models that are smaller, faster, and cheaper than the other models. 
+
+```{r}
+model_prices |> 
+  gt() |>
+  fmt_currency(columns = c(Input, Output), currency = "USD") |> 
+  tab_header(title = "Price per 1 million tokens")
+```
+
+In our evaluation process, each model used between `r eval_tokens_summary$min_input` and `r eval_tokens_summary$max_input` input tokens and between `r eval_tokens_summary$min_output` and `r eval_tokens_summary$max_output` output tokens. The entire analysis cost around $`r eval_tokens_summary$total_cost`.
+
+## What about other packages?
+
+This evaluation focused only on Pandas problems. We excluded DS-1000 tasks that did not involve Pandas.
+
+In future work, we plan to evaluate model performance on other common Python data science libraries, including Polars. Anecdotally, we've found that models struggle more with Polars code, and we're interested in testing this formally.
+
+## Methodology
+
+* We used [Inspect](https://inspect.aisi.org.uk/) to create connections to evaluate model performance on Pandas code generation tasks.
+* We tested each model on a shared benchmark: the [DS-1000 dataset](https://ukgovernmentbeis.github.io/inspect_evals/evals/coding/ds1000/). DS-1000 contains a collection of Python data science problems that involve various libraries, including Pandas, TensorFlow, and Matplotlib. To constrain our evaluation, we only included the 291 Pandas problems present in the data.   
+* Using Inspect, we had each model solve each Pandas problem. Then, we scored their solutions using a scoring model (Claude Sonnet 4). Each solution received either an Incorrect, Partially Correct, or Correct score. 
+
+You can see all the code used to evaluate the models [here](https://github.com/skaltman/model-eval/eval.py). If you'd like to learn more about LLM evaluation for code generation, see Simon Couch's series of [blog posts](https://www.simonpcouch.com/blog/) and the [Inspect website](https://inspect.aisi.org.uk/). 
+
